@@ -1,6 +1,8 @@
 # this file will contain all the functions that has
 # a connection with the glitter and will be used as an api in the swissknife.py file
+import hashlib
 import socket
+import requests
 from datetime import datetime
 
 APP_SERVER_IP = "54.187.16.171"
@@ -22,12 +24,21 @@ POST_GLIT_STRING = '550#{gli&&er}{"feed_owner_id":_feed_owner_id_,"publisher_id"
                    '"font_color":"_font_color_","id":-1}##'
 SEARCH_STRING = '300#{gli&&er}{"search_type":"_search_type_","search_entry":"_search_entry_"}##'
 APP_FEED_LOAD_STRING = '500#{gli&&er}{"feed_owner_id":_feed_owner_id_,"end_date":"_end_date_",' \
-                   '"glit_count":_glit_count_}##'
+                       '"glit_count":_glit_count_}##'
 APP_LOGOUT_STRING = '200#{gli&&er}_user_id_##'
-APP_CHANGE_USER_INFO = '350#{gli&&er}{"screen_name":"roki roki","avatar":"im2","description":"hi","privacy":"Public",' \
-                       '"id":14703,"user_name":"yanir","password":"aton","gender":"Male",' \
-                       '"mail":"yaniraton@yaniratom.com"}##'
+APP_CHANGE_USER_INFO = '350#{gli&&er}{"screen_name":"_screen_name_","avatar":"_avatar_",' \
+                       '"description":"_description_","privacy":"_privacy_","id":_id_,"user_name":"_user_name_",' \
+                       '"password":"_password_","gender":"_gender_","mail":"_mail_"}##'
+APP_GLANCE_REQUEST_STRING = '410#{gli&&er}[_user_sending_,_user_to_send_]##'
+APP_REFUSE_GLANCE_REQUEST_STRING = '430#{gli&&er}[_user_sending_,_user_to_send_]##'
+WEB_CREATE_PASSWORD_RECOVERY_URL = 'http://cyber.glitter.org.il/password-recovery-code-request/'
+WEB_GET_PASSWORD_RECOVERY_CODE = 'http://cyber.glitter.org.il/password-recovery-code-verification/'
+APP_GET_USER_SEARCH_HISTORY = '320#{gli&&er}_user_id_##'
 NUM_OF_LIKES = 3
+SUCCESS = True
+FAILURE = False
+XSS_EXAMPLE = "<img src='https://www.shutterstock.com/image-vector/hi-sticker-social-media-content" \
+              "-260nw-1138004576.jpg'>"
 
 
 def get_current_time_post_format():
@@ -36,6 +47,24 @@ def get_current_time_post_format():
     :return: the current time in the format that the server expects
     """
     current_time = datetime.utcnow().isoformat() + 'Z'
+    return current_time
+
+
+def get_current_date():
+    """
+    get the current date in the dd/mm format
+    :return: the current date in the dd/mm format
+    """
+    current_date = datetime.now().strftime("%d/%m")
+    return current_date
+
+
+def get_current_time():
+    """
+    get the current time in the mm:hh format
+    :return: the current time in the mm:hh format
+    """
+    current_time = datetime.now().strftime("%H:%M")
     return current_time
 
 
@@ -60,16 +89,34 @@ def ascii_checksum(string):
     return checksum
 
 
+def create_a_string_with_ascii_sum(ascii_sum):
+    """
+    creates a string with the given ascii sum
+    :param ascii_sum: the ascii sum to create a string with
+    :return: the string with the given ascii sum
+    """
+    result = ""
+    while ascii_sum > 48:
+        result += chr(48)
+        ascii_sum -= 48
+    result = result[:-1] + chr(48 + ascii_sum)
+    return result
+
+
 def get_user_data_from_app_authentication(message):
     """
     get the user id and username from the app authentication message
     :param message: the authentication message
-    :return: the user id and username
+    :return: the user id, username , avatar, user description, user privacy, user gender and the user mail
     """
     user_id = message.split('"id":')[1].split(',')[0]
     user_screen_name = message.split('"screen_name":"')[1].split('"')[0]
     avatar = message.split('"avatar":"')[1].split('"')[0]
-    return user_id, user_screen_name, avatar
+    description = message.split('"description":"')[1].split('"')[0]
+    privacy = message.split('"privacy":"')[1].split('"')[0]
+    gender = message.split('"gender":"')[1].split('"')[0]
+    mail = message.split('"mail":"')[1].split('"')[0]
+    return user_id, user_screen_name, avatar, description, privacy, gender, mail
 
 
 def initialize_app_connection():
@@ -98,9 +145,10 @@ def create_app_login_string(user_name, password):
     return msg
 
 
-def app_login(app_sock, user_name, password):
+def app_login(app_sock, user_name, password, print_error=True):
     """
     login to the server with the app
+    :param print_error: if there was a problem with the login, print the error only if this parameter is true
     :param app_sock: the connection to the app server(socket)
     :param user_name: the username to log in with
     :param password: the password to log in with
@@ -113,8 +161,9 @@ def app_login(app_sock, user_name, password):
     # Receive data
     server_msg = app_sock.recv(1024).decode()
     if (server_msg.find("Login received") == -1):
-        print("\033[31mlogin to server failed\n \033[0m")
-        return
+        if print_error:
+            print("\033[31mlogin to server failed\n \033[0m")
+        return server_msg
 
     # send checksum message
     checksum = ascii_checksum(user_name + password)
@@ -124,13 +173,14 @@ def app_login(app_sock, user_name, password):
     # Receive data and save for the user id
     server_msg = app_sock.recv(1024).decode()
     if (server_msg.find("Authentication approved") == -1):
-        # print that the authentication failed in red
-        print("\033[31mlogin to server failed\n \033[0m")
-        print("\033[31mAuthentication code mismatch\n \033[0m")
+        if print_error:
+            # print that the authentication failed in red
+            print("\033[31mlogin to server failed\n \033[0m")
+            print("\033[31mAuthentication code mismatch\n \033[0m")
         return
 
     # get the user id from the authentication message
-    user_id, screen_name, avatar = get_user_data_from_app_authentication(server_msg)
+    user_id, screen_name, avatar, description, privacy, gender, mail = get_user_data_from_app_authentication(server_msg)
 
     # add the user id to the fetch and load messages
     msg = APP_FETCH_STRING.replace('_userid_', user_id)
@@ -151,7 +201,7 @@ def app_login(app_sock, user_name, password):
 
     # print user id and screen name in cyan
     print("\033[36muser id: " + user_id + "\nuser screen name: " + screen_name + "\n\033[0m")
-    return user_id, screen_name, avatar
+    return user_id, screen_name, avatar, description, privacy, gender, mail
 
 
 def logout_app(app_sock, user_id):
@@ -165,7 +215,8 @@ def logout_app(app_sock, user_id):
     msg = send_message(app_sock, logout_string)
 
     # print the result of the logout
-    is_approved(msg, 'logout successful')
+    if is_approved(msg, 'logout successful'):
+        app_sock.close()
 
 
 def send_message(app_sock, message):
@@ -173,7 +224,7 @@ def send_message(app_sock, message):
     return app_sock.recv(8192).decode()
 
 
-def is_approved(message, approved_string):
+def is_approved(message, approved_string, print_approved=True):
     """
     check if the message is approved and print the result
     :param approved_string: the string to print if the message is approved
@@ -182,24 +233,36 @@ def is_approved(message, approved_string):
     """
     if message.find('approved') != -1:
         # print that the glit was posted in green
-        print('\033[92m' + approved_string + '\033[0m')
+        if print_approved:
+            print('\033[92m' + approved_string + '\033[0m')
+        return True
     else:
         # print that there is an error in red
-        print('\033[91m' + 'error: ' + message + '\033[0m')
+        if print_approved:
+            print('\033[91m' + 'error: ' + message + '\033[0m')
+        return False
 
 
-def get_post_id_from_response(response):
+def get_value_from_response(response, value):
     """
-    get the post id from the response
-    :param response: the response to get the post id from
-    :return: the post id
+    get a value from a response
+    :param response: the response to get the value from
+    :param value: the value to get
     """
     try:
-        # get the from the id to the end of the response
-        id = response.split('"id":')[1].split(',')[0]
+        # get the value from the response
+        value = response.split('"' + value + '":')[1].split(',')
 
-        # return the id without the last 4 characters that are not part of the id and represent the end of the response
-        return id[:len(id) - 4]
+        # remove the " from the value if thar is
+        if value[0][0] == '"':
+            value[0] = value[0][1:-1]
+
+        # remove the end of the message if the value is the last one
+        if len(value) == 1:
+            value[0] = value[0][:-4]
+
+        # return the value
+        return value[0]
     except Exception as e:
         return None
 
@@ -223,32 +286,6 @@ def like_glit_app(app_sock, glit_id, user_id, user_screen_name):
     return msg
 
 
-def infinity_likes_app(app_sock, glit_id, user_id, user_screen_name, num_of_likes):
-    """
-    This is a POC that show that you can get as many likes as you want simply by sending repeated like requests
-    :param app_sock: the connection to the app server(socket)
-    :param glit_id: the id of the glit to like
-    :param user_id: the id of the user that likes the glit
-    :param user_screen_name: the username of the user that likes the glit
-    :param num_of_likes: the number of times to like the glit
-    :return: None
-    """
-    for i in range(num_of_likes):
-        like_glit_app(app_sock, glit_id, user_id, user_screen_name)
-
-
-def like_nonexistent_glit_app(app_sock, user_id, user_screen_name):
-    """
-    This is a POC that show that you can like a glit that does not exist,
-    and it will not throw an error but create a new glit with empty content and pink color
-    :param app_sock: the connection to the app server(socket)
-    :param user_id: the id of the user that likes the glit
-    :param user_screen_name: the username of the user that likes the glit
-    :return: None
-    """
-    like_glit_app(app_sock, 100000, user_id, user_screen_name)
-
-
 def dislike_glit_app(app_sock, glit_id):
     """
     dislike a glit
@@ -261,26 +298,6 @@ def dislike_glit_app(app_sock, glit_id):
 
     # print the result of the dislike
     is_approved(msg, 'glit disliked')
-
-
-def dislike_not_your_gilt_app(app_sock, glit_id):
-    """
-    this is a POC for disliking a glit that you didn't dislike before
-    :param app_sock: the connection to the server(socket)
-    :param glit_id: the id of the glit to dislike
-    :return: None
-    """
-    dislike_glit_app(app_sock, glit_id)
-
-
-def dislike_private_glit_app(app_sock, glit_id):
-    """
-    this is a POC for disliking a private glit
-    :param app_sock: the connection to the server(socket)
-    :param glit_id: the id of the glit to dislike
-    :return: None
-    """
-    dislike_glit_app(app_sock, glit_id)
 
 
 def comment_glit_app(app_sock, glit_id, user_id, user_screen_name, content, date):
@@ -300,45 +317,6 @@ def comment_glit_app(app_sock, glit_id, user_id, user_screen_name, content, date
 
     # print the result of the comment
     is_approved(msg, 'commented on glit')
-
-
-def change_comment_time_app(app_sock, glit_id, user_id, user_screen_name):
-    """
-    This is a POC for commenting a glit with a time that is not the current time
-    :param app_sock: the socket object
-    :param glit_id: the id of the glit that we want to comment
-    :param user_id: the id of the user that wants to comment
-    :param user_screen_name: the screen name of the user that wants to comment
-    :return: None
-    """
-    comment_glit_app(app_sock, glit_id, user_id, user_screen_name, ('now its' + get_current_time_regular_format()),
-                     TIME_SEND_EXAMPLE)
-
-
-def comment_nonexistent_glit_id_app(app_sock, user_id, user_screen_name, content):
-    """
-    this is a POC for commenting to a gilt with an id that does not exist,
-    it won't throw an error but instead create a new glit with the content of the comment and pink background color
-    :param app_sock: the socket object
-    :param user_id: the id of the user that wants to comment
-    :param user_screen_name: the screen name of the user that wants to comment
-    :param content: the content of the comment
-    :return: None
-    """
-    comment_glit_app(app_sock, NONEXISTENT_ID, user_id, user_screen_name, content, get_current_time_post_format())
-
-
-def comment_to_private_glit(app_sock, glit_id, user_id, user_screen_name, content):
-    """
-    this is a POC for commenting to a private glit
-    :param app_sock: the socket object
-    :param glit_id: the id of the glit that we want to comment
-    :param user_id: the id of the user that wants to comment
-    :param user_screen_name: the screen name of the user that wants to comment
-    :param content: the content of the comment
-    :return: None
-    """
-    comment_glit_app(app_sock, glit_id, user_id, user_screen_name, content, get_current_time_post_format())
 
 
 def post_glit_app(app_sock, feed_owner_id, publisher_id, publisher_screen_name, publisher_avatar, background_color,
@@ -375,25 +353,6 @@ def post_glit_app(app_sock, feed_owner_id, publisher_id, publisher_screen_name, 
     return msg
 
 
-def change_post_time_app(app_sock, feed_owner_id, publisher_id, publisher_screen_name, publisher_avatar,
-                         background_color,
-                         content, font_color):
-    """
-    This is a POC for posting a glit with a time that is not the current time
-    :param app_sock: the connection to the server(socket)
-    :param feed_owner_id: the id of the user that owns the feed
-    :param publisher_id: the id of the user that post the glit
-    :param publisher_screen_name: the username of the user that post the glit
-    :param publisher_avatar: the avatar of the user that post the glit
-    :param background_color: the background color of the glit
-    :param content: the content of the glit
-    :param font_color: the font color of the glit
-    :return: None
-    """
-    post_glit_app(app_sock, feed_owner_id, publisher_id, publisher_screen_name, publisher_avatar, '', TIME_SEND_EXAMPLE,
-                  ('now its ' + get_current_time_regular_format()), 'black')
-
-
 def search_gliters_app(app_sock, search_type, search_entry):
     """
     This function sends a search request to the server
@@ -415,41 +374,26 @@ def search_gliters_app(app_sock, search_type, search_entry):
         return None
 
 
-def simplify_search_respond(search_result):
+def simplify_data(data):
     """
-    simplify the search respond
-    :param search_result: the search result
+    simplify given data
+    :param data: the search result
     :return: a dictionary with the data
     """
-    if search_result is None:
+    if data is None:
         return None
 
-    # get the search result only
-    search_result = search_result[search_result.find('['):search_result.find(']') + 1]
+    # get only the data from the respond
+    only_data = data[data.find('['):data.find(']') + 1]
 
-    if (search_result == '[]'):
+    if (only_data == '[]'):
         return None
 
-    # split the search result to users
-    users = search_result.split('},')
+    # convert the string to a list of dictionaries that contain the data
+    simplified_data = eval(only_data)
 
-    # remove the { and } from the users
-    for i in range(len(users)):
-        users[i] = users[i].replace('{', '').replace('}', '').replace('[', '').replace(']', '')
-
-        # split the users to data
-        users[i] = users[i].split(',"')
-        for j in range(len(users[i])):
-            # split the data to key and value
-            users[i][j] = users[i][j].split(':')
-            users[i][j][0] = users[i][j][0].replace('"', '')
-            users[i][j][1] = users[i][j][1].replace('"', '')
-
-        # create a dictionary from the data
-        users[i] = dict(users[i])
-
-    # return the users
-    return users
+    # return the data
+    return simplified_data
 
 
 def load_data_app(app_sock, feed_owner_id, glit_count):
@@ -472,39 +416,146 @@ def load_data_app(app_sock, feed_owner_id, glit_count):
     return msg
 
 
-def simplify_load_data(search_result):
+def change_user_info_app(app_sock, user_screen_name, avatar, description, privacy, user_id,
+                         user_name, password, gender, mail, print_error=True):
     """
-    Simplify the search response
-    :param search_result: the search result
-    :return: a list of dictionaries with the data
+    This function sends a change user info request to the server
+    :param print_error: print the result of the change(succesful or not)
+    :param app_sock: the connection to the server(socket)
+    :param user_screen_name: the screen name of the user
+    :param avatar: the avatar of the user
+    :param description: the description of the user
+    :param privacy: the privacy of the user(Public, Private)
+    :param user_id: the id of the user
+    :param user_name: the username of the user
+    :param password: the password of the user
+    :param gender: the gender of the user (male, female, leave blank)
+    :param mail: the mail of the user
+    :return: None
     """
-    # Get the search result only
-    search_result = search_result[search_result.find('['):search_result.find(']') + 1]
+    change_user_info_string = APP_CHANGE_USER_INFO.replace('_screen_name_', user_screen_name)
+    change_user_info_string = change_user_info_string.replace('_avatar_', avatar)
+    change_user_info_string = change_user_info_string.replace('_description_', description)
+    change_user_info_string = change_user_info_string.replace('_privacy_', privacy)
+    change_user_info_string = change_user_info_string.replace('_id_', str(user_id))
+    change_user_info_string = change_user_info_string.replace('_user_name_', user_name)
+    change_user_info_string = change_user_info_string.replace('_password_', password)
+    change_user_info_string = change_user_info_string.replace('_gender_', gender)
+    change_user_info_string = change_user_info_string.replace('_mail_', mail)
+    msg = send_message(app_sock, change_user_info_string)
 
-    # Split the search result into glits
-    glits = search_result.split('},')
+    return msg, is_approved(msg, 'user info changed', print_error)
 
-    glits_dict = []
 
-    # Remove the { and } from the glits
-    for i in range(len(glits)):
-        glits[i] = glits[i].replace('{', '').replace('}', '').replace('[', '').replace(']', '')
+def create_cookie(date, time, username):
+    """
+    This function creates a cookie
+    :param date: the date of the cookie in the format of dd/mm/yyyy
+    :param time: the time of the cookie in the format of hh:mm
+    :param username: the username of the user
+    :return: the cookie
+    """
+    date = date.replace('/', '')
+    time = time.replace(':', '')
+    username_MD5 = hashlib.md5(username.encode()).hexdigest()
+    return date + '.' + username_MD5 + '.' + time + '.' + date
 
-        # Split the glits into data
-        glits[i] = glits[i].split(',"')
-        glit_data = {}
 
-        for j in range(len(glits[i])):
-            # Split the data into key and value
-            key_value = glits[i][j].split(':')
-            key = key_value[0].replace('"', '')
-            value = key_value[1].replace('"', '')
+def send_glance_request_app(app_sock, user_sending, user_to_send):
+    """
+    This function sends a glance request to the server
+    :param app_sock: the connection to the server(socket)
+    :param user_sending: the user that sends the request
+    :param user_to_send: the user that the request is sent to
+    :return: None
+    """
+    glance_string = APP_GLANCE_REQUEST_STRING.replace('_user_sending_', str(user_sending))
+    glance_string = glance_string.replace('_user_to_send_', str(user_to_send))
+    msg = send_message(app_sock, glance_string)
 
-            # Add key-value pair to glit_data dictionary
-            glit_data[key] = value
+    if msg.find("Glance request is valid") != -1:
+        # print that the glance request was sent
+        print('\033[92m' + 'glance request sent' + '\033[0m')
+        return msg
+    else:
+        # print that there is an error in red
+        print('\033[91m' + 'error: ' + msg + '\033[0m')
+        return None
 
-        # Append glit_data dictionary to glits_dict list
-        glits_dict.append(glit_data)
 
-    # Return the list of glits
-    return glits_dict
+def refuse_glance_request_app(app_sock, user_sending, user_to_send):
+    """
+    This function refuses a glance request
+    :param app_sock: the connection to the server(socket)
+    :param user_sending: the user that sends the request
+    :param user_to_send: the user that the request is sent to
+    :return:
+    """
+    glance_string = APP_REFUSE_GLANCE_REQUEST_STRING.replace('_user_sending_', str(user_sending))
+    glance_string = glance_string.replace('_user_to_send_', str(user_to_send))
+    msg = send_message(app_sock, glance_string)
+
+    return msg.find("Glance response is valid") != -1
+
+
+def request_password_recovery_web(username):
+    """
+    This function sends a password recovery request to the server
+    :param username: the username of the user
+    :return: None
+    """
+    response = requests.post(WEB_CREATE_PASSWORD_RECOVERY_URL, json=username)
+    return response.status_code == 204
+
+
+def generate_key(date, user_id, time):
+    """
+    This function generates a key for the password recovery
+    :param date: the date of the key in the format of dd/mm
+    :param user_id: the user id of the user
+    :param time: the time of the key in the format of hh:mm
+    :return: the key
+    """
+    date = date.replace('/', '')
+    time = time.replace(':', '')
+    user_code = ""
+    for i in str(user_id):
+        user_code += chr(int(i) + 65)
+
+    return date + user_code + time
+
+
+def get_password_from_recovery_code(username, recovery_code):
+    """
+    This function gets the password with the recovery code
+    :param username: the username of the user
+    :param recovery_code: the recovery code of the user
+    :return: the password
+    """
+    request_body = [username, recovery_code]
+    response = requests.post(WEB_GET_PASSWORD_RECOVERY_CODE, json=request_body)
+    return response.text
+
+
+def get_user_search_history_app(app_sock, user_id):
+    """
+    This function gets the user search history
+    :param app_sock: the connection to the server(socket)
+    :param user_id: the user id of the user
+    :return: the search history
+    """
+    search_history_string = APP_GET_USER_SEARCH_HISTORY.replace('_user_id_', str(user_id))
+    msg = send_message(app_sock, search_history_string)
+    return msg
+
+
+def get_user_updates_app(app_sock, user_id):
+    """
+    This function gets the user updates
+    :param app_sock: the connection to the server(socket)
+    :param user_id: the user id of the user
+    :return: the updates
+    """
+    updates_string = APP_LOAD_STRING.replace('_userid_', str(user_id))
+    msg = send_message(app_sock, updates_string)
+    return msg
