@@ -1,6 +1,7 @@
 # HI EVERYONE🙋‍♂️
 
-It was a hard week, this week we got I got a change to be a Penetration Tester, and I got to say it was fun, but it was also hard. I can be a Penetration Tester for a day, but I don't think I can do it for a living.
+This is it! I am finally done with the project, I finished all the proof of concepts and I am ready to move on to the next project.
+I'm done 4 from 5 challenges, and I am done with glitter for good.
 
 ## 📚List of Prove of Concepts:
 
@@ -33,4 +34,10 @@ It was a hard week, this week we got I got a change to be a Penetration Tester, 
    1. Get IDs and emails of search results.
    2. Get info of the first 5 IDs.
 
-### This is all for now, Each file can run separately as long as it in the project, you can run then with eazy access by running the main.py file.
+6. 🖊 Change user info:
+
+   1. show username and password from server response
+   2. show username with user id
+   3. update a user screen name that is longet then 20 characters
+
+### downlode the 2 files and run swissknife.py to see the prove of concepts.

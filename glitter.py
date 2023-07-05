@@ -96,9 +96,12 @@ def create_a_string_with_ascii_sum(ascii_sum):
     :return: the string with the given ascii sum
     """
     result = ""
+    # add 48 to the ascii sum until it is less than 48
     while ascii_sum > 48:
         result += chr(48)
         ascii_sum -= 48
+    # if the ascii sum is less than 48 so it can be up to 47 so if we add 47+48=95 and 95 is the range of 48 - 122
+    # the range of numbers and letters in the ascii table
     result = result[:-1] + chr(48 + ascii_sum)
     return result
 
@@ -220,6 +223,12 @@ def logout_app(app_sock, user_id):
 
 
 def send_message(app_sock, message):
+    """
+    send a message to the server and return the response
+    :param app_sock: the connection to the server(socket)
+    :param message: the message to send
+    :return:
+    """
     app_sock.sendall(message.encode())
     return app_sock.recv(8192).decode()
 
@@ -253,7 +262,7 @@ def get_value_from_response(response, value):
         # get the value from the response
         value = response.split('"' + value + '":')[1].split(',')
 
-        # remove the " from the value if thar is
+        # remove the " from the value if there is
         if value[0][0] == '"':
             value[0] = value[0][1:-1]
 
@@ -502,7 +511,7 @@ def request_password_recovery_web(username):
     """
     This function sends a password recovery request to the server
     :param username: the username of the user
-    :return: None
+    :return: True if the request was sent successfully, False otherwise
     """
     response = requests.post(WEB_CREATE_PASSWORD_RECOVERY_URL, json=username)
     return response.status_code == 204
